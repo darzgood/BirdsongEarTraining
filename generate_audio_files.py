@@ -31,8 +31,6 @@ def query_xeno_canto(species, query = "q:A len:5-60 type:song"):
     search_url = f"https://www.xeno-canto.org/api/2/recordings?query={search_query}"
     response = requests.get(search_url)
 
-    print(search_url)
-
     if response.status_code == 200:
         data = response.json()
         num_recordings = int(data.get('numRecordings', 0))
@@ -59,6 +57,8 @@ def search_song_urls(bird_species, samples = 1):
     song_names = []
 
     for species in bird_species:
+
+        print(f"Searching for {species} recordings.")
         
         recordings = query_xeno_canto(species)
         if(recordings == None):
@@ -158,3 +158,7 @@ def generate_bird_songs(bird_names, habitat="Default", season="all", samples=1):
 ### Example
 # bird_species = ["Chipping Sparrow", "Pine Warbler", "Acadian Flycatcher", "Worm-eating Warbler"]
 # generate_bird_songs(bird_species)
+
+### TODO
+#  Add designators for call vs song vs drum
+#  Add XCxxxxxxx to file name for traceability
