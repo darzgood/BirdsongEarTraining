@@ -1,4 +1,5 @@
 import pickle
+import random
 import requests
 import pyttsx3
 from pydub import AudioSegment
@@ -25,74 +26,55 @@ def get_TTS_engine():
 
     return engine
 
+def query_xeno_canto(species, query = "q:A len:5-60 type:song"):
+    search_query = f"{species} {query}"
+    search_url = f"https://www.xeno-canto.org/api/2/recordings?query={search_query}"
+    response = requests.get(search_url)
 
-# Get Scientific names
-pkl_file = 'species_mapping.pkl'
-def load_species_mapping(pkl_file):
-    with open(pkl_file, 'rb') as f:
-        species_mapping = pickle.load(f)
-    return species_mapping
+    print(search_url)
 
+    if response.status_code == 200:
+        data = response.json()
+        num_recordings = int(data.get('numRecordings', 0))
 
+        if num_recordings > 0:
+            return data['recordings']
+        
+    else:
+        print(f"Internet Down or Link Invalid: {search_url}")
 
+    return None
 
+def search_song_urls(bird_species, samples = 1):
+    """
+    Species: str, single bird name, common or scientific
+    samples: int, number of urls to return
 
-def get_bird_song_urls(bird_species):
-    ###
-    # This function is still very much a work in progress 
-    # Ideally it would find the best available audio recording
-    # Of the right species!!! (Check scientific name and subspecies, etc)
-    # Quality: A
-    # Length: 10-15 seconds in length
-    # Song type: Song (rather than call or drum or other)
-    # 
-    # The order that these criterion can be relaxed needs to be more thought out
-    # 
-    # Additionally, it would be great to return a list of possible urls, and then a separate function can randomly sample a few.
-
-    ###
+    Returns: song_urls, songnames
+     List: URls of files to download
+     List: Common name associated with each url
+    """
 
     song_urls = []
-    background_sp = []
-
-    print("Downloading Songs: ...", end ="")
-
-    # english_to_scientific = load_species_mapping(pkl_file)
+    song_names = []
 
     for species in bird_species:
-        ### Initially tried to convert to scientific to be more precise, but with taxonomic name changes, etc, this was a bust.
-        # try:
-        #     search_query = f"{english_to_scientific[species]} q:A len:5-60 type:song"
-        # except KeyError:
-        #     search_query = f"{species} q:A len:5-60 type:song"
-
-        search_query = f"{species} q:A len:5-60 type:song"
-
-        search_url = f"https://www.xeno-canto.org/api/2/recordings?query={search_query}"
-        response = requests.get(search_url)
-
-        if response.status_code == 200:
-            data = response.json()
-
-            if int(data['numRecordings']) > 0:
-                if data['recordings'][0]['en'] != species:
-                    print("Oops! The song of a {} was almost downloaded instead of {}. You may have to download this audio manually!".format(data['recordings'][0]['en'], species))
-                    song_urls.append(None)
-                else:
-                    song_url = data['recordings'][0]['url']
-                    song_urls.append("https:{}".format(song_url))
-            else:
-                song_urls.append(None)
-
-                ### Should actually retry with less stringent query
-        else:
-            song_urls.append(None)
         
-        print(".", end ="")
-
-    print(" ")
-
-    return song_urls
+        recordings = query_xeno_canto(species)
+        if(recordings == None):
+            ### Try reducing constraints if first query is empty
+            recordings = query_xeno_canto(species, query = "q:A len:1-90")
+        
+        if recordings:
+            chosen_recordings = random.choices(recordings, k = samples)
+            for recording in chosen_recordings:
+                song_urls.append(recording['file'])
+                song_names.append(recording['en'])
+        
+        else:
+            print(f"Audio recordings retrieval failed: {species}" )
+            
+    return song_urls, song_names
 
 def generate_audio_file(engine, phrase, output_file):
     #engine = pyttsx3.init()
@@ -120,7 +102,7 @@ def save_bird_song(name, url, subdirectory, engine):
     # generate_audio_file_gtts(name, spoken_name)
 
     # Download a song
-    response = requests.get(url+"/download")
+    response = requests.get(url)
     with open(song_output, 'wb') as f:
         f.write(response.content)
 
@@ -152,7 +134,9 @@ def generate_bird_songs(bird_names, habitat="Default", season="all", samples=1):
         - Retrieve multiple recordings for each species.
     """
 
-    song_urls = get_bird_song_urls(bird_names)
+    # song_urls = get_bird_song_urls(bird_names)
+
+    song_urls, song_names = search_song_urls(bird_names, samples)
     engine = get_TTS_engine()
 
     # Create a subdirectory for the combined output files
@@ -161,7 +145,7 @@ def generate_bird_songs(bird_names, habitat="Default", season="all", samples=1):
         os.makedirs(subdirectory)
 
     # Combine each song and name and save it!
-    for name, url in zip(bird_names, song_urls):
+    for name, url in zip(song_names, song_urls):
         if url:
             save_bird_song(name, url, subdirectory, engine)
             print(f"Combined audio generated for '{name}'")
@@ -172,6 +156,5 @@ def generate_bird_songs(bird_names, habitat="Default", season="all", samples=1):
 
 
 ### Example
-# bird_species = ["Chipping Sparrow", "Pine Warbler", "Dark-eyed Junco", "Alder Flycatcher", "American Goldfinch", "American Robin",
-#                 "Brown Creeper", "Black-and-white Warbler", "Cedar Waxwing", "Eastern Bluebird", "Red-winged Blackbird", "Willow Flycatcher"]
+# bird_species = ["Chipping Sparrow", "Pine Warbler", "Acadian Flycatcher", "Worm-eating Warbler"]
 # generate_bird_songs(bird_species)
